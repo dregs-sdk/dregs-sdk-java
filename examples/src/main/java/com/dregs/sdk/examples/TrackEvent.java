@@ -45,7 +45,7 @@ public final class TrackEvent {
             if (result.accepted()) {
                 System.out.println("Recorded event " + result.id() + ".");
             } else {
-                // Dregs answers a few rejections quietly rather than naming the check that failed.
+                // Uncommon, and worth a log line: accepted without an event being recorded.
                 System.out.println("The event was not recorded (status " + result.status() + ").");
             }
         } catch (QuotaExceededException exceeded) {

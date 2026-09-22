@@ -111,8 +111,8 @@ public final class Dregs extends AbstractDregsClient implements AutoCloseable {
      * moves appear moments later rather than on the next line.
      *
      * @param request the event to record
-     * @return what Dregs did with the event. Check {@link TrackResult#accepted()} to distinguish a
-     *     recorded event from one of the rejections Dregs answers quietly
+     * @return what Dregs did with the event. Check {@link TrackResult#accepted()} to confirm it
+     *     was recorded
      * @throws com.dregs.sdk.exception.QuotaExceededException when the account is over its monthly
      *     event limit. Events are not queued while an account is over it, so this is yours to
      *     drop or hold
