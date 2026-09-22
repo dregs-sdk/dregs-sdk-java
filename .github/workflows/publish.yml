@@ -39,7 +39,7 @@ jobs:
           java-version: "25"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       # A tag that disagrees with the packaged version would publish something other than what the
       # release notes describe, and a version cannot be reused on Central once it is taken.
@@ -71,7 +71,7 @@ jobs:
           java-version: "25"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       # Signs every artifact with the in-memory key and packages the result as the zipped Maven
       # repository layout the Central Portal takes.
