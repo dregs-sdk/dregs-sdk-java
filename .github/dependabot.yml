@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "Bump"
+
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "Bump"
+    groups:
+      test-dependencies:
+        patterns:
+          - "org.junit*"
+          - "org.assertj*"

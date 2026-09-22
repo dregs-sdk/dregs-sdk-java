@@ -1,0 +1,225 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+}
+
+group = 'com.dregs'
+version = '0.1.0'
+description = 'Java SDK for Dregs, the fraud and abuse scoring service.'
+
+// This library runs on other people's JVMs, so it targets the oldest Java anyone is still
+// deliberately deploying rather than the newest release available. The toolchain is whatever JDK
+// runs Gradle; --release pins the bytecode and the API surface.
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+// The examples compile as part of `check`, so a change to the client surface cannot quietly leave
+// the documented code not working.
+sourceSets {
+    examples {
+        java.setSrcDirs(['examples/src/main/java'])
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+configurations {
+    examplesImplementation.extendsFrom api, implementation
+    examplesRuntimeOnly.extendsFrom runtimeOnly
+}
+
+dependencies {
+    // Gson is the only runtime dependency, deliberately. See CONTRIBUTING.md. It is an
+    // implementation detail rather than an api one: no public signature mentions a Gson type,
+    // so consumers get it at runtime without it landing on their compile classpath, and
+    // swapping it later is not a breaking change for them.
+    implementation 'com.google.code.gson:gson:2.13.2'
+
+    testImplementation platform('org.junit:junit-bom:6.1.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core:3.27.6'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Lock the resolved dependency graph. CI resolves against the committed lockfiles and fails when
+// a version moves under it, rather than quietly building against something else.
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+    options.encoding = 'UTF-8'
+    // -Werror is the static check: there is no separate linter in this build, so the compiler's
+    // own warnings have to be taken seriously to be worth anything.
+    options.compilerArgs += ['-Xlint:all', '-Werror']
+}
+
+tasks.named('javadoc') {
+    options.encoding = 'UTF-8'
+    // Gradle's default member level includes private members, which doclint's "missing" check
+    // would then demand comments for. The published surface is what this is policing.
+    options.memberLevel = JavadocMemberLevel.PROTECTED
+    options.addStringOption('Xdoclint:all', '-quiet')
+    // Javadoc is the other half of the static check: doclint fails the build on a public member
+    // that is missing documentation, which is the standard this SDK holds itself to.
+    options.addBooleanOption('Werror', true)
+    options.addStringOption('source', '17')
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+
+    testLogging {
+        events = ['failed']
+        exceptionFormat = 'full'
+    }
+}
+
+// The User-Agent every request carries is built from a constant in the source, because reading it
+// from the jar manifest would leave it wrong in tests and in the IDE. This keeps the constant and
+// the published version from drifting apart without anyone noticing.
+tasks.register('checkVersion') {
+    description = 'Fails when Dregs.VERSION disagrees with the project version.'
+    group = 'verification'
+
+    def source = file('src/main/java/com/dregs/sdk/Dregs.java')
+    def expected = version.toString()
+
+    inputs.file(source)
+    inputs.property('version', expected)
+    outputs.upToDateWhen { true }
+
+    doLast {
+        def matcher = source.text =~ /VERSION\s*=\s*"([^"]+)"/
+
+        if (!matcher.find()) {
+            throw new GradleException("Could not find the VERSION constant in ${source}.")
+        }
+
+        if (matcher.group(1) != expected) {
+            throw new GradleException(
+                    "Dregs.VERSION is ${matcher.group(1)} but the project version is ${expected}. " +
+                            'Update both, and CHANGELOG.md with them.')
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'checkVersion', 'compileExamplesJava'
+}
+
+tasks.register('runTrackEvent', JavaExec) {
+    description = 'Runs the event-tracking example against $DREGS_SECRET_KEY.'
+    group = 'application'
+
+    classpath = sourceSets.examples.runtimeClasspath
+    mainClass = 'com.dregs.sdk.examples.TrackEvent'
+}
+
+tasks.register('runReadScores', JavaExec) {
+    description = 'Runs the score-reading example against $DREGS_SECRET_KEY.'
+    group = 'application'
+
+    classpath = sourceSets.examples.runtimeClasspath
+    mainClass = 'com.dregs.sdk.examples.ReadScores'
+}
+
+// The Central Portal takes a zipped Maven repository layout. Building it here rather than in the
+// workflow keeps the publish path something a maintainer can run and inspect locally.
+tasks.register('centralBundle', Zip) {
+    description = 'Packages the signed artifacts as a Central Portal deployment bundle.'
+    group = 'publishing'
+
+    dependsOn 'publishMavenPublicationToStagingRepository'
+
+    from(layout.buildDirectory.dir('staging-deploy')) {
+        // Central rejects a bundle carrying repository-level metadata.
+        exclude '**/maven-metadata.xml*'
+    }
+
+    archiveFileName = "dregs-sdk-${version}-bundle.zip"
+    destinationDirectory = layout.buildDirectory.dir('central')
+}
+
+// Used by the publish workflow to check a release tag against what is actually packaged.
+tasks.register('printVersion') {
+    description = 'Prints the project version.'
+
+    def value = version.toString()
+
+    doLast {
+        println value
+    }
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+
+            pom {
+                name = 'Dregs Java SDK'
+                description = project.description
+                url = 'https://github.com/dregs-sdk/dregs-sdk-java'
+
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://github.com/dregs-sdk/dregs-sdk-java/blob/main/LICENSE'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'dregs'
+                        name = 'Dregs'
+                        email = 'support@dregs.com'
+                        url = 'https://dregs.com'
+                    }
+                }
+
+                scm {
+                    url = 'https://github.com/dregs-sdk/dregs-sdk-java'
+                    connection = 'scm:git:https://github.com/dregs-sdk/dregs-sdk-java.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/dregs-sdk/dregs-sdk-java.git'
+                }
+
+                issueManagement {
+                    system = 'GitHub'
+                    url = 'https://github.com/dregs-sdk/dregs-sdk-java/issues'
+                }
+            }
+        }
+    }
+
+    repositories {
+        // Maven Central is reached through the Central Portal's staging API, which takes an
+        // ordinary Maven deployment bundle. The workflow uploads from this local repository.
+        maven {
+            name = 'staging'
+            url = layout.buildDirectory.dir('staging-deploy')
+        }
+    }
+}
+
+// Central requires every artifact to be signed. The key arrives from the environment in CI and
+// from the usual gradle.properties locally; an unsigned local build is fine and stays quiet.
+signing {
+    def signingKey = findProperty('signingKey') ?: System.getenv('SIGNING_KEY')
+    def signingPassword = findProperty('signingPassword') ?: System.getenv('SIGNING_PASSWORD')
+
+    required = { signingKey && gradle.taskGraph.hasTask(':publish') }
+
+    if (signingKey) {
+        useInMemoryPgpKeys(signingKey.toString(), signingPassword?.toString())
+        sign publishing.publications.maven
+    }
+}
