@@ -1,0 +1,120 @@
+# Compile, document, and test. The Gradle wrapper pins Gradle, gradle.lockfile pins the dependency
+# versions, and gradle/verification-metadata.xml pins their checksums, so these are the same
+# commands a contributor runs locally and they resolve to the same artifacts.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and document
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      # There is no separate linter: -Xlint:all -Werror on the compiler and -Xdoclint:all -Werror on
+      # javadoc are the static check, and the second is what enforces documentation on every public
+      # member. checkVersion catches Dregs.VERSION drifting from the packaged version.
+      - name: Compile
+        run: ./gradlew compileJava compileTestJava compileExamplesJava
+
+      - name: Javadoc
+        run: ./gradlew javadoc
+
+      - name: Check the version constant
+        run: ./gradlew checkVersion
+
+  test:
+    name: Test on Java ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["17", "21", "25"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Test
+        run: ./gradlew test
+
+      - name: Upload the test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-java-${{ matrix.java }}
+          path: build/reports/tests/test/
+          retention-days: 7
+
+  build:
+    name: Build the distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      # --refresh-dependencies re-downloads everything, so a checksum in
+      # gradle/verification-metadata.xml that no longer matches what Maven Central serves fails here
+      # rather than at publish time.
+      - name: Build
+        run: ./gradlew build centralBundle --refresh-dependencies
+
+      # Catches a jar that builds but would be rejected by Central: a missing sources or javadoc
+      # jar, a POM without the metadata Central requires.
+      - name: Check the deployment bundle
+        run: |
+          unzip -l build/central/dregs-sdk-*-bundle.zip
+          for suffix in "" "-sources" "-javadoc"; do
+            unzip -l build/central/dregs-sdk-*-bundle.zip \
+              | grep -q "dregs-sdk-.*${suffix}.jar" || {
+                echo "the bundle is missing the${suffix:-" main"} jar"
+                exit 1
+              }
+          done
+          unzip -p build/central/dregs-sdk-*-bundle.zip "*.pom" > pom.xml
+          for element in "<name>" "<description>" "<url>" "<licenses>" "<developers>" "<scm>"; do
+            grep -q "$element" pom.xml || { echo "the POM is missing $element"; exit 1; }
+          done
+
+      - name: Upload the distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: build/libs/
+          retention-days: 7
