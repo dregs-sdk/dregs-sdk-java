@@ -90,6 +90,25 @@ class ErrorsTest {
         }
 
         @Test
+        void aRedirectIsRefusedRatherThanFollowedWithTheSecretKey() {
+            try (StubServer server = new StubServer()
+                            .always(StubServer.Reply.status(301)
+                                    .withHeader("Location", "https://elsewhere.example/api/identities/x"));
+                    Dregs client = clientFor(server)) {
+
+                DregsApiException thrown = catchThrowableOfType(
+                        DregsApiException.class, () -> client.identities().get("user_12345"));
+
+                assertThat(thrown.statusCode()).isEqualTo(301);
+                assertThat(thrown).hasMessageContaining("does not follow redirects");
+                assertThat(thrown).hasMessageContaining("elsewhere.example");
+
+                // One request: the redirect was not chased, so the key never left the host.
+                assertThat(server.callCount()).isEqualTo(1);
+            }
+        }
+
+        @Test
         void everyErrorIsCatchableAsTheBaseClass() {
             try (StubServer server = new StubServer().always(StubServer.Reply.status(404));
                     Dregs client = clientFor(server)) {

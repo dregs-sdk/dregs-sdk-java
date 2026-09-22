@@ -2,6 +2,7 @@ package com.dregs.model;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * An identity's four category scores.
@@ -132,7 +133,7 @@ public record Scores(List<Score> items) implements Iterable<Score> {
      * @param payload the parsed array of score objects
      * @return the scores
      */
-    public static Scores fromApi(List<java.util.Map<String, Object>> payload) {
+    public static Scores fromApi(List<Map<String, Object>> payload) {
         if (payload == null) {
             return new Scores();
         }

@@ -1,6 +1,7 @@
 package com.dregs.model;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
@@ -74,7 +75,7 @@ final class ApiData {
             return OffsetDateTime.parse(text).toInstant();
         } catch (DateTimeParseException ignored) {
             try {
-                return java.time.LocalDateTime.parse(text).toInstant(ZoneOffset.UTC);
+                return LocalDateTime.parse(text).toInstant(ZoneOffset.UTC);
             } catch (DateTimeParseException stillUnreadable) {
                 return null;
             }

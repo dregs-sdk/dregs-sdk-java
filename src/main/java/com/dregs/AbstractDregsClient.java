@@ -19,6 +19,7 @@ import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -57,7 +58,7 @@ abstract class AbstractDregsClient {
     private static final String STATUS_QUOTA_EXCEEDED = "quota_exceeded";
 
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
-            DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss'Z'").withZone(java.time.ZoneOffset.UTC);
+            DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
 
     /**
      * How environment variables are read. Swapped in tests, because a JVM cannot set its own
@@ -156,7 +157,10 @@ abstract class AbstractDregsClient {
     static HttpClient defaultHttpClient(Duration timeout) {
         return HttpClient.newBuilder()
                 .connectTimeout(timeout == null ? DEFAULT_TIMEOUT : timeout)
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                // Deliberately NEVER. Every request carries the secret key in an Authorization
+                // header, and following a redirect would hand that key to whatever host the
+                // redirect named. The API does not redirect, so one means the base URL is wrong.
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
@@ -265,7 +269,7 @@ abstract class AbstractDregsClient {
     final Object process(HttpResponse<String> response) {
         Object payload = Json.parseOrNull(response.body());
 
-        if (response.statusCode() >= 400) {
+        if (response.statusCode() >= 300) {
             throw apiError(response, payload);
         }
 
@@ -297,7 +301,7 @@ abstract class AbstractDregsClient {
 
     private static DregsApiException apiError(HttpResponse<String> response, Object payload) {
         int status = response.statusCode();
-        String message = messageFrom(payload);
+        String message = status < 400 ? redirectMessage(response) : messageFrom(payload);
         String requestId = headerOrNull(response, "X-Request-Id");
 
         return switch (status) {
@@ -311,6 +315,16 @@ abstract class AbstractDregsClient {
                     ? new ServerException(message, status, payload, requestId)
                     : new DregsApiException(message, status, payload, requestId);
         };
+    }
+
+    /** A 3xx only reaches here because the SDK refuses to follow one. Say why, and where to. */
+    private static String redirectMessage(HttpResponse<String> response) {
+        String location = headerOrNull(response, "Location");
+
+        return "Dregs answered with a redirect"
+                + (location == null ? "" : " to " + location)
+                + ". The SDK does not follow redirects, because that would forward your secret key "
+                + "to another host. Point the base URL at the final address instead.";
     }
 
     private static String messageFrom(Object payload) {

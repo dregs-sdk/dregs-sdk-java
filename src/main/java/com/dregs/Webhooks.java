@@ -3,6 +3,7 @@ package com.dregs;
 import com.dregs.exception.WebhookVerificationException;
 import com.google.gson.JsonSyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -85,7 +86,7 @@ public final class Webhooks {
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM));
 
             return hex(mac.doFinal(payload));
-        } catch (NoSuchAlgorithmException | java.security.InvalidKeyException exception) {
+        } catch (NoSuchAlgorithmException | InvalidKeyException exception) {
             // HmacSHA256 is required of every JRE, so this only fires on an empty key.
             throw new WebhookVerificationException(
                     "Could not compute the webhook signature: " + exception.getMessage(), exception);
