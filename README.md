@@ -30,7 +30,7 @@ in the Dregs dashboard. It starts with `sk_`. The `pk_` public key is for the br
 read identities or scores.
 
 ```java
-import com.dregs.Dregs;
+import com.dregs.sdk.Dregs;
 
 Dregs client = Dregs.builder().secretKey(System.getenv("DREGS_SECRET_KEY")).build();
 ```
@@ -42,7 +42,7 @@ making a new one per request. It is immutable and safe to share across threads.
 ## Tracking events
 
 ```java
-import com.dregs.TrackRequest;
+import com.dregs.sdk.TrackRequest;
 
 client.track(TrackRequest.builder("user.signup", "user_12345")
         .data(Map.of("plan", "pro", "referrer", "partner-x"))

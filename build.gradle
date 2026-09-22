@@ -9,8 +9,8 @@ version = '0.1.0'
 description = 'Java SDK for Dregs, the fraud and abuse scoring service.'
 
 // This library runs on other people's JVMs, so it targets the oldest Java anyone is still
-// deliberately deploying rather than the newest one the monorepo happens to build with. The
-// toolchain is whatever JDK runs Gradle; --release pins the bytecode and the API surface.
+// deliberately deploying rather than the newest release available. The toolchain is whatever JDK
+// runs Gradle; --release pins the bytecode and the API surface.
 java {
     withSourcesJar()
     withJavadocJar()
@@ -90,7 +90,7 @@ tasks.register('checkVersion') {
     description = 'Fails when Dregs.VERSION disagrees with the project version.'
     group = 'verification'
 
-    def source = file('src/main/java/com/dregs/Dregs.java')
+    def source = file('src/main/java/com/dregs/sdk/Dregs.java')
     def expected = version.toString()
 
     inputs.file(source)
@@ -121,7 +121,7 @@ tasks.register('runTrackEvent', JavaExec) {
     group = 'application'
 
     classpath = sourceSets.examples.runtimeClasspath
-    mainClass = 'com.dregs.examples.TrackEvent'
+    mainClass = 'com.dregs.sdk.examples.TrackEvent'
 }
 
 tasks.register('runReadScores', JavaExec) {
@@ -129,7 +129,7 @@ tasks.register('runReadScores', JavaExec) {
     group = 'application'
 
     classpath = sourceSets.examples.runtimeClasspath
-    mainClass = 'com.dregs.examples.ReadScores'
+    mainClass = 'com.dregs.sdk.examples.ReadScores'
 }
 
 // The Central Portal takes a zipped Maven repository layout. Building it here rather than in the
