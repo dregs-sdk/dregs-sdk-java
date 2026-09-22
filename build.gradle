@@ -36,8 +36,11 @@ configurations {
 }
 
 dependencies {
-    // Gson is the only runtime dependency, deliberately. See CONTRIBUTING.md.
-    api 'com.google.code.gson:gson:2.13.2'
+    // Gson is the only runtime dependency, deliberately. See CONTRIBUTING.md. It is an
+    // implementation detail rather than an api one: no public signature mentions a Gson type,
+    // so consumers get it at runtime without it landing on their compile classpath, and
+    // swapping it later is not a breaking change for them.
+    implementation 'com.google.code.gson:gson:2.13.2'
 
     testImplementation platform('org.junit:junit-bom:6.1.1')
     testImplementation 'org.junit.jupiter:junit-jupiter'
