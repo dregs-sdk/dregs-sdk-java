@@ -40,7 +40,7 @@ dependencies {
     // implementation detail rather than an api one: no public signature mentions a Gson type,
     // so consumers get it at runtime without it landing on their compile classpath, and
     // swapping it later is not a breaking change for them.
-    implementation 'com.google.code.gson:gson:2.13.2'
+    implementation 'com.google.code.gson:gson:2.14.0'
 
     testImplementation platform('org.junit:junit-bom:6.1.1')
     testImplementation 'org.junit.jupiter:junit-jupiter'
