@@ -30,7 +30,7 @@ jobs:
           java-version: "25"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       # There is no separate linter: -Xlint:all -Werror on the compiler and -Xdoclint:all -Werror on
       # javadoc are the static check, and the second is what enforces documentation on every public
@@ -61,7 +61,7 @@ jobs:
           java-version: ${{ matrix.java }}
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Test
         run: ./gradlew test
@@ -87,7 +87,7 @@ jobs:
           java-version: "25"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       # --refresh-dependencies re-downloads everything, so a checksum in
       # gradle/verification-metadata.xml that no longer matches what Maven Central serves fails here
