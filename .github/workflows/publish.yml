@@ -30,7 +30,7 @@ jobs:
     name: Build and verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -62,7 +62,7 @@ jobs:
       name: maven-central
       url: https://central.sonatype.com/artifact/com.dregs/dregs-sdk
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Java
         uses: actions/setup-java@v6
