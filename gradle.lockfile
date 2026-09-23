@@ -1,6 +1,7 @@
 # This is a Gradle generated file for dependency locking.
 # Manual edits can break the build and are not advised.
 # This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :dependencies --write-locks
 com.google.code.gson:gson:2.13.2=compileClasspath,examplesCompileClasspath,examplesRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.google.errorprone:error_prone_annotations:2.41.0=compileClasspath,examplesCompileClasspath,examplesRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 net.bytebuddy:byte-buddy:1.17.7=testCompileClasspath,testRuntimeClasspath
