@@ -21,7 +21,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -218,6 +220,21 @@ abstract class AbstractDregsClient {
         body.put("data", request.data());
         body.put("identity", identity);
         body.put("source", request.source() == null ? DEFAULT_SOURCE : request.source());
+
+        if (!request.groups().isEmpty()) {
+            List<Map<String, Object>> groups = new ArrayList<>(request.groups().size());
+
+            for (TrackGroup group : request.groups()) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+
+                entry.put("type", group.type());
+                entry.put("id", group.id());
+                entry.put("data", group.data());
+                groups.add(entry);
+            }
+
+            body.put("groups", groups);
+        }
 
         if (request.timestamp() != null) {
             body.put("timestamp", formatTimestamp(request.timestamp()));
