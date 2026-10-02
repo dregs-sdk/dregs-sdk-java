@@ -64,6 +64,22 @@ For an event with nothing but a type and an identity, there is a short form:
 client.track("user.signup", "user_12345");
 ```
 
+### Groups
+
+If your application groups users into organizations, teams, workspaces, or the like, pass the groups the
+user is acting in. Dregs records each group and makes the identity a member of it. Each group has your
+own `id`, a `type` that is your own name for the kind of group (`"organization"` when null), and
+optional `data` that Dregs merges into the group, so later events can send the type and id alone. Dregs
+normalizes types to lower_snake_case, so `ParentCompany` and `parent-company` are the same type, and an
+event can carry one group of each type.
+
+```java
+client.track(TrackRequest.builder("user.login", "user_12345")
+        .group("organization", "org_678", Map.of("name", "Acme Inc", "plan", "enterprise"))
+        .group("team", "team_42", Map.of("name", "Payments"))
+        .build());
+```
+
 ### Idempotency
 
 Every event is sent with an `id`, which makes ingestion idempotent: reposting the same id returns the

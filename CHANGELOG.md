@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `TrackRequest.Builder.group()`: the organizations, teams, workspaces, or other groups the user is
+  acting in, each with an `id`, a `type` (`"organization"` when null), and optional `data`. Dregs
+  makes the identity a member of each. `TrackRequest.groups()` returns them as `TrackGroup` records.
+
 ## [0.1.0] - 2026-09-22
 
 The first release. A server-side client for tracking events and reading scores.
