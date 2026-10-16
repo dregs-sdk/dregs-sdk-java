@@ -3,8 +3,8 @@
 Thanks for helping improve the Dregs Java SDK.
 
 This is a **port** of the [reference SDK](https://github.com/dregs-sdk/dregs-sdk-python), which the
-TypeScript, Ruby, and PHP SDKs are also ported from. A change to the public surface here is a change
-to all five, so surface changes are worth discussing in an issue before you write the code, and they
+TypeScript, Ruby, PHP, Rust, and Elixir SDKs are also ported from. A change to the public surface here is a change
+to all seven, so surface changes are worth discussing in an issue before you write the code, and they
 usually belong in the reference SDK first.
 
 ## Getting set up
