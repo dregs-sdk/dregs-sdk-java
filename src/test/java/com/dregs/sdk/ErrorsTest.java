@@ -141,7 +141,55 @@ class ErrorsTest {
                         ServerException.class, () -> client.identities().get("user_12345"));
 
                 assertThat(thrown.requestId()).isEqualTo("req_abc");
-                assertThat(thrown).hasToString("HTTP 500: Request failed (request req_abc)");
+                assertThat(thrown).hasToString("HTTP 500: Internal Server Error (request req_abc)");
+            }
+        }
+
+        @Test
+        void anEmptyBodyFallsBackToTheReasonPhrase() {
+            try (StubServer server = new StubServer().always(StubServer.Reply.status(404));
+                    Dregs client = clientFor(server)) {
+
+                assertThatThrownBy(() -> client.identities().get("user_12345"))
+                        .isInstanceOf(NotFoundException.class)
+                        .hasMessage("Not Found")
+                        .hasToString("HTTP 404: Not Found");
+            }
+        }
+
+        @Test
+        void aJsonBodyWithoutAMessageFallsBackToTheReasonPhrase() {
+            try (StubServer server = new StubServer().always(StubServer.Reply.json(503, "{\"status\":503}"));
+                    Dregs client = clientFor(server)) {
+
+                assertThatThrownBy(() -> client.identities().get("user_12345"))
+                        .isInstanceOf(ServerException.class)
+                        .hasMessage("Service Unavailable");
+            }
+        }
+
+        @Test
+        void anUnknownStatusQuotesTheStartOfANonJsonBody() {
+            String page = "<html>\n  <body>Teapot   trouble</body>\n</html>" + "x".repeat(300);
+
+            try (StubServer server = new StubServer().always(StubServer.Reply.text(418, page));
+                    Dregs client = clientFor(server)) {
+
+                DregsApiException thrown = catchThrowableOfType(
+                        DregsApiException.class, () -> client.identities().get("user_12345"));
+
+                assertThat(thrown.getMessage()).startsWith("<html> <body>Teapot trouble</body> </html>xxx");
+                assertThat(thrown.getMessage()).hasSize(203).endsWith("...");
+            }
+        }
+
+        @Test
+        void anUnknownStatusWithNothingToGoOnStillSaysSomething() {
+            try (StubServer server = new StubServer().always(StubServer.Reply.json(418, "{}"));
+                    Dregs client = clientFor(server)) {
+
+                assertThatThrownBy(() -> client.identities().get("user_12345"))
+                        .hasMessage("Request failed");
             }
         }
 
@@ -156,6 +204,7 @@ class ErrorsTest {
 
                 assertThat(thrown.body()).isNull();
                 assertThat(thrown.statusCode()).isEqualTo(502);
+                assertThat(thrown).hasMessage("Bad Gateway");
             }
         }
 

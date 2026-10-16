@@ -2,13 +2,17 @@ package com.dregs.sdk;
 
 import com.dregs.sdk.exception.DregsApiException;
 import com.dregs.sdk.exception.DregsConnectionException;
+import com.dregs.sdk.model.Page;
 import com.dregs.sdk.model.TrackResult;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * A synchronous Dregs client.
@@ -37,11 +41,15 @@ public final class Dregs extends AbstractDregsClient implements AutoCloseable {
      *
      * <p>The build fails when this disagrees with the published artifact's version.
      */
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "1.0.0";
 
     private final HttpClient http;
     private final boolean ownsHttpClient;
     private final Identities identities;
+    private final Groups groups;
+    private final Events events;
+    private final Devices devices;
+    private final Escalations escalations;
 
     private Dregs(Builder builder) {
         super(builder.secretKey, builder.baseUrl, builder.timeout, builder.maxRetries, builder.backoff);
@@ -49,6 +57,10 @@ public final class Dregs extends AbstractDregsClient implements AutoCloseable {
         this.ownsHttpClient = builder.httpClient == null;
         this.http = builder.httpClient == null ? defaultHttpClient(builder.timeout) : builder.httpClient;
         this.identities = new Identities(this);
+        this.groups = new Groups(this);
+        this.events = new Events(this);
+        this.devices = new Devices(this);
+        this.escalations = new Escalations(this);
     }
 
     /**
@@ -70,6 +82,42 @@ public final class Dregs extends AbstractDregsClient implements AutoCloseable {
      */
     public Identities identities() {
         return identities;
+    }
+
+    /**
+     * Reading and managing groups and their members.
+     *
+     * @return the groups namespace
+     */
+    public Groups groups() {
+        return groups;
+    }
+
+    /**
+     * Reading the events Dregs has recorded.
+     *
+     * @return the events namespace
+     */
+    public Events events() {
+        return events;
+    }
+
+    /**
+     * Reading devices, and disregarding them.
+     *
+     * @return the devices namespace
+     */
+    public Devices devices() {
+        return devices;
+    }
+
+    /**
+     * Reading and working escalations.
+     *
+     * @return the escalations namespace
+     */
+    public Escalations escalations() {
+        return escalations;
     }
 
     /**
@@ -126,6 +174,48 @@ public final class Dregs extends AbstractDregsClient implements AutoCloseable {
         return TrackResult.fromApi(Json.asObject(payload));
     }
 
+    /** Runs one call and parses its answer. */
+    <T> T run(Call<T> call) {
+        return call.parse().apply(request(call.method(), call.path(), call.query(), call.body()));
+    }
+
+    /**
+     * Walks every page of a list call, fetching each one only when the iteration reaches it.
+     *
+     * <p>Each {@code iterator()} starts a fresh walk from the first page the parameters name, so
+     * looping twice fetches twice.
+     */
+    <T> Iterable<T> walk(ListCall<T> call) {
+        return () -> new Iterator<T>() {
+
+            private int number = call.params().page();
+            private Iterator<T> current = List.<T>of().iterator();
+            private boolean more = true;
+
+            @Override
+            public boolean hasNext() {
+                while (!current.hasNext() && more) {
+                    Page<T> page = run(call.page(number));
+
+                    current = page.iterator();
+                    more = page.hasNext();
+                    number++;
+                }
+
+                return current.hasNext();
+            }
+
+            @Override
+            public T next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+
+                return current.next();
+            }
+        };
+    }
+
     /**
      * Sends a request, retrying what is worth retrying.
      *
@@ -133,7 +223,12 @@ public final class Dregs extends AbstractDregsClient implements AutoCloseable {
      * and cannot record the event twice.
      */
     Object request(String method, String path, Map<String, Object> body) {
-        HttpRequest httpRequest = buildRequest(method, path, body);
+        return request(method, path, null, body);
+    }
+
+    /** Sends a request with query parameters, retrying what is worth retrying. */
+    Object request(String method, String path, Map<String, Object> query, Map<String, Object> body) {
+        HttpRequest httpRequest = buildRequest(method, path, query, body);
         int attempt = 0;
 
         while (true) {

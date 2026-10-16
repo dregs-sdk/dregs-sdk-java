@@ -8,11 +8,16 @@ import com.dregs.sdk.model.TrackResult;
 import java.net.http.HttpClient;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /** Client construction, configuration, and the track() request body. */
 class DregsClientTest {
@@ -287,6 +292,83 @@ class DregsClientTest {
                             .build())
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("64 characters");
+        }
+
+        @Test
+        void sendsTheGroups() {
+            try (StubServer server = new StubServer().always(StubServer.Reply.json(200, ACCEPTED));
+                    Dregs client = clientFor(server)) {
+
+                client.track(TrackRequest.builder("user.login", "user_12345")
+                        .group("organization", "org_678", Map.of("name", "Acme Inc"))
+                        .group("team", "team_42")
+                        .build());
+
+                assertThat(TestSupport.json(server.lastRequest().body()))
+                        .containsEntry(
+                                "groups",
+                                List.of(
+                                        Map.of(
+                                                "type", "organization",
+                                                "id", "org_678",
+                                                "data", Map.of("name", "Acme Inc")),
+                                        Map.of("type", "team", "id", "team_42", "data", Map.of())));
+            }
+        }
+
+        @Test
+        void aGroupWithoutATypeIsAnOrganization() {
+            try (StubServer server = new StubServer().always(StubServer.Reply.json(200, ACCEPTED));
+                    Dregs client = clientFor(server)) {
+
+                client.track(TrackRequest.builder("user.login", "user_12345")
+                        .group(null, "org_678")
+                        .build());
+
+                assertThat(TestSupport.json(server.lastRequest().body()))
+                        .containsEntry(
+                                "groups",
+                                List.of(Map.of("type", "organization", "id", "org_678", "data", Map.of())));
+            }
+        }
+
+        @Test
+        void omitsTheGroupsWhenThereAreNone() {
+            try (StubServer server = new StubServer().always(StubServer.Reply.json(200, ACCEPTED));
+                    Dregs client = clientFor(server)) {
+
+                client.track("user.login", "user_12345");
+                client.track(TrackRequest.builder("user.login", "user_12345").build());
+
+                assertThat(TestSupport.json(server.requests().get(0).body())).doesNotContainKey("groups");
+                assertThat(TestSupport.json(server.requests().get(1).body())).doesNotContainKey("groups");
+            }
+        }
+
+        static Stream<Arguments> malformedGroups() {
+            return Stream.of(
+                    Arguments.of(login().group("team", null), "needs an id"),
+                    Arguments.of(login().group("team", ""), "needs an id"),
+                    Arguments.of(login().group("team", "a").group("Team", "b"), "one group of each type"),
+                    Arguments.of(
+                            login().group(null, "a").group("organization", "b"), "one group of each type"));
+        }
+
+        private static TrackRequest.Builder login() {
+            return TrackRequest.builder("user.login", "user_12345");
+        }
+
+        @ParameterizedTest(name = "[{index}] {1}")
+        @MethodSource("malformedGroups")
+        void malformedGroupsAreRefusedBeforeAnyRequest(TrackRequest.Builder builder, String message) {
+            try (StubServer server = new StubServer().always(StubServer.Reply.json(200, ACCEPTED));
+                    Dregs client = clientFor(server)) {
+
+                assertThatThrownBy(() -> client.track(builder.build()))
+                        .isInstanceOf(IllegalArgumentException.class)
+                        .hasMessageContaining(message);
+                assertThat(server.callCount()).isZero();
+            }
         }
     }
 

@@ -12,6 +12,7 @@ import com.dregs.sdk.model.Category;
 import com.dregs.sdk.model.Scores;
 import com.dregs.sdk.model.TrackResult;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -38,6 +39,7 @@ class AsyncDregsTest {
 
             TrackResult result = client.track(TrackRequest.builder("user.signup", "user_12345")
                             .data(Map.of("plan", "pro"))
+                            .group("team", "team_42")
                             .eventId("signup-991")
                             .build())
                     .join();
@@ -47,6 +49,9 @@ class AsyncDregsTest {
             assertThat(body).containsEntry("id", "signup-991");
             assertThat(body).containsEntry("source", "java-sdk");
             assertThat(TestSupport.asMap(body.get("identity"))).containsEntry("id", "user_12345");
+            assertThat(body)
+                    .containsEntry(
+                            "groups", List.of(Map.of("type", "team", "id", "team_42", "data", Map.of())));
             assertThat(result.accepted()).isTrue();
         }
     }
@@ -200,6 +205,10 @@ class AsyncDregsTest {
     void theTwoClientsExposeTheSameSurface() {
         assertThat(publicMethodsOf(AsyncDregs.class)).isEqualTo(publicMethodsOf(Dregs.class));
         assertThat(publicMethodsOf(AsyncIdentities.class)).isEqualTo(publicMethodsOf(Identities.class));
+        assertThat(publicMethodsOf(AsyncGroups.class)).isEqualTo(publicMethodsOf(Groups.class));
+        assertThat(publicMethodsOf(AsyncEvents.class)).isEqualTo(publicMethodsOf(Events.class));
+        assertThat(publicMethodsOf(AsyncDevices.class)).isEqualTo(publicMethodsOf(Devices.class));
+        assertThat(publicMethodsOf(AsyncEscalations.class)).isEqualTo(publicMethodsOf(Escalations.class));
     }
 
     private static Set<String> publicMethodsOf(Class<?> type) {

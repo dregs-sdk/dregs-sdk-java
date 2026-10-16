@@ -6,6 +6,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -38,6 +40,10 @@ public final class AsyncDregs extends AbstractDregsClient implements AutoCloseab
     private final HttpClient http;
     private final boolean ownsHttpClient;
     private final AsyncIdentities identities;
+    private final AsyncGroups groups;
+    private final AsyncEvents events;
+    private final AsyncDevices devices;
+    private final AsyncEscalations escalations;
 
     private AsyncDregs(Builder builder) {
         super(builder.secretKey, builder.baseUrl, builder.timeout, builder.maxRetries, builder.backoff);
@@ -45,6 +51,10 @@ public final class AsyncDregs extends AbstractDregsClient implements AutoCloseab
         this.ownsHttpClient = builder.httpClient == null;
         this.http = builder.httpClient == null ? defaultHttpClient(builder.timeout) : builder.httpClient;
         this.identities = new AsyncIdentities(this);
+        this.groups = new AsyncGroups(this);
+        this.events = new AsyncEvents(this);
+        this.devices = new AsyncDevices(this);
+        this.escalations = new AsyncEscalations(this);
     }
 
     /**
@@ -63,6 +73,42 @@ public final class AsyncDregs extends AbstractDregsClient implements AutoCloseab
      */
     public AsyncIdentities identities() {
         return identities;
+    }
+
+    /**
+     * Reading and managing groups and their members.
+     *
+     * @return the groups namespace
+     */
+    public AsyncGroups groups() {
+        return groups;
+    }
+
+    /**
+     * Reading the events Dregs has recorded.
+     *
+     * @return the events namespace
+     */
+    public AsyncEvents events() {
+        return events;
+    }
+
+    /**
+     * Reading devices, and disregarding them.
+     *
+     * @return the devices namespace
+     */
+    public AsyncDevices devices() {
+        return devices;
+    }
+
+    /**
+     * Reading and working escalations.
+     *
+     * @return the escalations namespace
+     */
+    public AsyncEscalations escalations() {
+        return escalations;
     }
 
     /**
@@ -96,7 +142,30 @@ public final class AsyncDregs extends AbstractDregsClient implements AutoCloseab
      * and cannot record the event twice.
      */
     CompletableFuture<Object> request(String method, String path, Map<String, Object> body) {
-        return attempt(buildRequest(method, path, body), 0);
+        return attempt(buildRequest(method, path, null, body), 0);
+    }
+
+    /** Runs one call and parses its answer. */
+    <T> CompletableFuture<T> run(Call<T> call) {
+        return attempt(buildRequest(call.method(), call.path(), call.query(), call.body()), 0)
+                .thenApply(call.parse());
+    }
+
+    /** Walks every page of a list call, one request at a time, and collects the items. */
+    <T> CompletableFuture<List<T>> walk(ListCall<T> call) {
+        return walk(call, call.params().page(), new ArrayList<>());
+    }
+
+    private <T> CompletableFuture<List<T>> walk(ListCall<T> call, int number, List<T> collected) {
+        return run(call.page(number)).thenCompose(page -> {
+            page.forEach(collected::add);
+
+            if (!page.hasNext()) {
+                return CompletableFuture.completedFuture(List.copyOf(collected));
+            }
+
+            return walk(call, number + 1, collected);
+        });
     }
 
     private CompletableFuture<Object> attempt(HttpRequest httpRequest, int attempt) {

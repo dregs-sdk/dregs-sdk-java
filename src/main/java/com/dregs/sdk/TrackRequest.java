@@ -1,9 +1,14 @@
 package com.dregs.sdk;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * One backend event, ready to send.
@@ -34,6 +39,7 @@ public final class TrackRequest {
     private final String identity;
     private final Map<String, Object> data;
     private final Map<String, Object> identityData;
+    private final List<TrackGroup> groups;
     private final String eventId;
     private final Instant timestamp;
     private final String source;
@@ -43,6 +49,7 @@ public final class TrackRequest {
         this.identity = builder.identity;
         this.data = copyOf(builder.data);
         this.identityData = copyOf(builder.identityData);
+        this.groups = List.copyOf(builder.groups);
         this.eventId = builder.eventId;
         this.timestamp = builder.timestamp;
         this.source = builder.source;
@@ -108,6 +115,15 @@ public final class TrackRequest {
     }
 
     /**
+     * The groups the user is acting in, such as their organization or team.
+     *
+     * @return the groups, in the order they were added, empty when none was added
+     */
+    public List<TrackGroup> groups() {
+        return groups;
+    }
+
+    /**
      * Your own id for the event, when you supplied one.
      *
      * @return the event id, or {@code null} to have the SDK generate one
@@ -140,7 +156,7 @@ public final class TrackRequest {
                 + eventId + "]";
     }
 
-    private static Map<String, Object> copyOf(Map<String, Object> source) {
+    static Map<String, Object> copyOf(Map<String, Object> source) {
         if (source == null || source.isEmpty()) {
             return Map.of();
         }
@@ -162,6 +178,7 @@ public final class TrackRequest {
         private final String identity;
         private Map<String, Object> data;
         private Map<String, Object> identityData;
+        private final List<TrackGroup> groups = new ArrayList<>();
         private String eventId;
         private Instant timestamp;
         private String source;
@@ -198,6 +215,42 @@ public final class TrackRequest {
          */
         public Builder identityData(Map<String, Object> identityData) {
             this.identityData = identityData;
+
+            return this;
+        }
+
+        /**
+         * Adds a group the user is acting in, such as their organization or team, with no data.
+         *
+         * <p>The same as {@link #group(String, String, Map)} with {@code null} data, for events
+         * that send the type and id alone once Dregs already knows the group.
+         *
+         * @param type your own name for the kind of group, defaulting to {@code "organization"}
+         *     when {@code null}
+         * @param id your own id for the group
+         * @return this builder
+         */
+        public Builder group(String type, String id) {
+            return group(type, id, null);
+        }
+
+        /**
+         * Adds a group the user is acting in, such as their organization or team, if your
+         * application has them.
+         *
+         * <p>Each group has an id (your own), an optional type (your own name for the kind of
+         * group, defaulting to {@code "organization"}), and optional data that Dregs merges into
+         * the group. Dregs makes the identity a member of each. Call this once per group, with at
+         * most one group of each type.
+         *
+         * @param type your own name for the kind of group, defaulting to {@code "organization"}
+         *     when {@code null}
+         * @param id your own id for the group
+         * @param data attributes of the group, or {@code null} for none
+         * @return this builder
+         */
+        public Builder group(String type, String id, Map<String, Object> data) {
+            this.groups.add(new TrackGroup(type, id, data));
 
             return this;
         }
@@ -249,8 +302,8 @@ public final class TrackRequest {
          * Validates and builds the request.
          *
          * @return the request
-         * @throws IllegalArgumentException when the event type or identity is missing, or the
-         *     event id is reserved or too long
+         * @throws IllegalArgumentException when the event type or identity is missing, the event
+         *     id is reserved or too long, a group has no id, or two groups share a type
          */
         public TrackRequest build() {
             if (eventType == null || eventType.isEmpty()) {
@@ -274,6 +327,21 @@ public final class TrackRequest {
                     throw new IllegalArgumentException(
                             "Event ids cannot be longer than " + MAX_EVENT_ID_LENGTH
                                     + " characters.");
+                }
+            }
+
+            Set<String> seenTypes = new HashSet<>();
+
+            for (TrackGroup group : groups) {
+                if (group.id() == null || group.id().isEmpty()) {
+                    throw new IllegalArgumentException("Each group needs an id.");
+                }
+
+                // Dregs normalizes types to lower_snake_case, so "Team" and "team" are one type.
+                if (!seenTypes.add(group.type().toLowerCase(Locale.ROOT))) {
+                    throw new IllegalArgumentException(
+                            "Only one group of each type can go with an event; '" + group.type()
+                                    + "' appears twice.");
                 }
             }
 

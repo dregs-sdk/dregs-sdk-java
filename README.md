@@ -10,14 +10,14 @@ for fraud and abuse across four categories: humanity, authenticity, uniqueness, 
 Send events from your backend, read back the scores and the observations behind them.
 
 ```groovy
-implementation 'com.dregs:dregs-sdk:0.1.0'
+implementation 'com.dregs:dregs-sdk:1.0.0'
 ```
 
 ```xml
 <dependency>
     <groupId>com.dregs</groupId>
     <artifactId>dregs-sdk</artifactId>
-    <version>0.1.0</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
@@ -62,6 +62,22 @@ For an event with nothing but a type and an identity, there is a short form:
 
 ```java
 client.track("user.signup", "user_12345");
+```
+
+### Groups
+
+If your application groups users into organizations, teams, workspaces, or the like, pass the groups the
+user is acting in. Dregs records each group and makes the identity a member of it. Each group has your
+own `id`, a `type` that is your own name for the kind of group (`"organization"` when null), and
+optional `data` that Dregs merges into the group, so later events can send the type and id alone. Dregs
+normalizes types to lower_snake_case, so `ParentCompany` and `parent-company` are the same type, and an
+event can carry one group of each type.
+
+```java
+client.track(TrackRequest.builder("user.login", "user_12345")
+        .group("organization", "org_678", Map.of("name", "Acme Inc", "plan", "enterprise"))
+        .group("team", "team_42", Map.of("name", "Payments"))
+        .build());
 ```
 
 ### Idempotency
@@ -154,6 +170,129 @@ client.identities().analyze("user_12345");
 This queues the work and returns; it does not wait for the cycle to finish. Dregs rescores on its own
 as events arrive, so you rarely need this outside of a support or backfill flow.
 
+### History, links, and past cycles
+
+```java
+List<ScoreHistoryEntry> history = client.identities().history("user_12345", 10);
+
+for (ScoreHistoryEntry entry : history) {
+    log.info("{} humanity {} behavior {}", entry.finishedAt(), entry.humanity(), entry.behavior());
+}
+
+// A past cycle's observations, by the cycle id from the history.
+Analysis older = client.identities().analysis("user_12345", history.get(1).cycleId());
+
+for (LinkedIdentity link : client.identities().links("user_12345")) {
+    log.info("{} {} {}", link.identityId(), link.type(), link.explanation());  // "user_999", "SAME_DEVICE"
+}
+```
+
+### Disregarding an identity
+
+Leave your own staff and test accounts out of scoring and escalations:
+
+```java
+client.identities().update("qa_bot_7", IdentityUpdate.builder().disregarded(true).build());
+```
+
+`IdentityUpdate` also takes `attributes(...)`, which Dregs merges into the identity the way
+`identityData` on a tracked event would. Only what you set is sent.
+
+### Asking for a review
+
+When a score looks wrong, Dregs's AI reviewer will look over the analysis and say why. The review runs
+in the background, so read it back later with `reviews()`.
+
+```java
+IdentityReview review = client.identities().review("user_12345", "This is a long-standing customer.");
+
+review.status();  // "PENDING", then "FINISHED"
+```
+
+## Listing and paging
+
+Every namespace with a `list()` returns one `Page` at a time, numbered from 0, and a `listAll()` that
+walks every page for you. The filters, page size, and order go in a params object built the same way
+as a `TrackRequest`:
+
+```java
+Page<Identity> page = client.identities().list(IdentityListParams.builder()
+        .term("example.com")
+        .pageSize(50)
+        .build());
+
+page.totalElements();  // how many match in all
+page.hasNext();        // whether another page follows
+
+for (Identity identity : client.identities().listAll(IdentityListParams.builder()
+        .group("org_678")
+        .sort("humanityScore")
+        .order("asc")
+        .build())) {
+    ...
+}
+```
+
+`Page` is `Iterable` over its items. `listAll()` fetches each page only when the loop reaches it, and
+stops at the last one. Filters you leave out are not sent, and `list()` or `listAll()` with no
+arguments takes the defaults. A page holds at most 100 items. A negative page or an order other than
+`"asc"` or `"desc"` is refused by `build()`, before anything is sent.
+
+On `AsyncDregs`, `listAll()` returns a `CompletableFuture<List<T>>` that completes once every page has
+been fetched, so for a result set too large to hold in memory, page with `list()` instead.
+
+## Groups
+
+`track()` records groups and memberships as events arrive. The `groups()` namespace reads them back,
+and keeps Dregs in step when something changes outside an event, such as a user leaving a team. A group
+is named by its type and then its id, in the same order as `TrackRequest.Builder.group()`:
+
+```java
+client.groups().create("org_678", Map.of("name", "Acme Inc", "plan", "enterprise"));
+
+Group group = client.groups().get("organization", "org_678");
+group.identityCount();  // 12
+
+client.groups().update("organization", "org_678", Map.of("plan", "business"));
+
+client.groups().addMember("team", "team_42", "user_12345");
+client.groups().removeMember("team", "team_42", "user_12345");
+
+for (Group team : client.groups().listAll(GroupListParams.builder()
+        .type("team")
+        .identity("user_12345")
+        .build())) {
+    log.info("{} {}", team.id(), team.displayName());
+}
+```
+
+`create()` merges into the group when one with the same type and id already exists, so it is safe to
+call on every sync. With just an id, or an id and attributes, it creates an `"organization"`; for any
+other type, use `create(type, id, attributes)`.
+
+## Events, devices, and escalations
+
+```java
+for (Event event : client.events().listAll(EventListParams.builder().identity("user_12345").build())) {
+    log.info("{} {} {}", event.timestamp(), event.name(), event.canonicalType());
+}
+
+client.devices().update("a1b2c3d4e5", true);  // disregard it, e.g. a shared office machine
+
+for (Escalation escalation : client.escalations().listAll(EscalationListParams.builder()
+        .status("open")
+        .severity("critical")
+        .build())) {
+    notifyOnCall(escalation.identity().id());
+    client.escalations().update(escalation.id(), "acknowledged");
+}
+
+client.escalations().summary();  // EscalationSummary[open=3, acknowledged=1, closed=20, ...]
+```
+
+An escalation's status is one of `"open"`, `"acknowledged"`, or `"closed"`, in either case; anything
+else is refused before the request is made.
+
 ## Errors
 
 Every exception this library throws derives from `DregsException`, and all of them are unchecked: a
@@ -178,13 +317,15 @@ try {
 | `AuthenticationException` | 401, the secret key was not recognized |
 | `QuotaExceededException` | 402, the account is over its monthly event limit |
 | `PermissionDeniedException` | 403, the credential may not do this |
-| `NotFoundException` | 404, no such identity, or it has not been analyzed |
+| `NotFoundException` | 404, no such identity, group, event, device, or escalation, or no analysis yet |
 | `RateLimitException` | 429, too many requests |
 | `ServerException` | 5xx |
 | `DregsTimeoutException` | the request timed out |
 | `DregsConnectionException` | the request never reached Dregs |
 
-Those that reached the API also carry `statusCode()`, `body()`, and `requestId()`. Quote the request id
+Those that reached the API also carry `statusCode()`, `body()`, and `requestId()`. The message is the
+API's own when the body has one, and otherwise the status's standard reason phrase, so a bare 404 reads
+`HTTP 404: Not Found`. Quote the request id
 when you report a problem: it is what lets support find the request in the logs.
 
 ### Retries

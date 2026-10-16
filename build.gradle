@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.dregs'
-version = '0.1.0'
+version = '1.0.0'
 description = 'Java SDK for Dregs, the fraud and abuse scoring service.'
 
 // This library runs on other people's JVMs, so it targets the oldest Java anyone is still
