@@ -1,7 +1,10 @@
 package com.dregs.sdk;
 
 import com.google.gson.Gson;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
@@ -30,6 +33,25 @@ final class TestSupport {
     @SuppressWarnings("unchecked")
     static Map<String, Object> json(String body) {
         return GSON.fromJson(body, Map.class);
+    }
+
+    /** The query parameters of a request the stub recorded, decoded. */
+    static Map<String, String> query(StubServer.Recorded request) {
+        Map<String, String> params = new LinkedHashMap<>();
+
+        if (request.query() == null || request.query().isEmpty()) {
+            return params;
+        }
+
+        for (String pair : request.query().split("&")) {
+            int equals = pair.indexOf('=');
+
+            params.put(
+                    URLDecoder.decode(pair.substring(0, equals), StandardCharsets.UTF_8),
+                    URLDecoder.decode(pair.substring(equals + 1), StandardCharsets.UTF_8));
+        }
+
+        return params;
     }
 
     /** An exception body, as a map, for assertions about what the API said. */

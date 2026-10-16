@@ -205,6 +205,10 @@ class AsyncDregsTest {
     void theTwoClientsExposeTheSameSurface() {
         assertThat(publicMethodsOf(AsyncDregs.class)).isEqualTo(publicMethodsOf(Dregs.class));
         assertThat(publicMethodsOf(AsyncIdentities.class)).isEqualTo(publicMethodsOf(Identities.class));
+        assertThat(publicMethodsOf(AsyncGroups.class)).isEqualTo(publicMethodsOf(Groups.class));
+        assertThat(publicMethodsOf(AsyncEvents.class)).isEqualTo(publicMethodsOf(Events.class));
+        assertThat(publicMethodsOf(AsyncDevices.class)).isEqualTo(publicMethodsOf(Devices.class));
+        assertThat(publicMethodsOf(AsyncEscalations.class)).isEqualTo(publicMethodsOf(Escalations.class));
     }
 
     private static Set<String> publicMethodsOf(Class<?> type) {

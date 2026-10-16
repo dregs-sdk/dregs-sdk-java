@@ -53,6 +53,21 @@ final class ApiData {
         return value instanceof Boolean flag && flag;
     }
 
+    /** A boolean that reads as {@code fallback} unless the payload says otherwise. */
+    static boolean bool(Map<String, Object> payload, String key, boolean fallback) {
+        Object value = payload.get(key);
+
+        return value instanceof Boolean flag ? flag : fallback;
+    }
+
+    /** The nested object at {@code key}, or null when there is none. */
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> objectOrNull(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+
+        return value instanceof Map ? (Map<String, Object>) value : null;
+    }
+
     /** Parses an ISO-8601 timestamp, answering null for anything unparseable. */
     static Instant instant(Map<String, Object> payload, String key) {
         Object value = payload.get(key);

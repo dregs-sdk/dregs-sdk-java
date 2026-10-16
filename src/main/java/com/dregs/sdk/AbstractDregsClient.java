@@ -59,6 +59,40 @@ abstract class AbstractDregsClient {
 
     private static final String STATUS_QUOTA_EXCEEDED = "quota_exceeded";
 
+    /** How much of a non-JSON error body makes it into an exception's message. */
+    private static final int MAX_BODY_IN_MESSAGE = 200;
+
+    /**
+     * The standard reason phrases, for an error response whose body says nothing useful.
+     *
+     * <p>{@code HttpResponse} does not expose the phrase the server sent (HTTP/2 does not have one),
+     * so the SDK keeps its own table of the statuses an API or the proxy in front of it plausibly
+     * answers with.
+     */
+    private static final Map<Integer, String> REASON_PHRASES = Map.ofEntries(
+            Map.entry(400, "Bad Request"),
+            Map.entry(401, "Unauthorized"),
+            Map.entry(402, "Payment Required"),
+            Map.entry(403, "Forbidden"),
+            Map.entry(404, "Not Found"),
+            Map.entry(405, "Method Not Allowed"),
+            Map.entry(406, "Not Acceptable"),
+            Map.entry(408, "Request Timeout"),
+            Map.entry(409, "Conflict"),
+            Map.entry(410, "Gone"),
+            Map.entry(411, "Length Required"),
+            Map.entry(412, "Precondition Failed"),
+            Map.entry(413, "Content Too Large"),
+            Map.entry(414, "URI Too Long"),
+            Map.entry(415, "Unsupported Media Type"),
+            Map.entry(422, "Unprocessable Content"),
+            Map.entry(429, "Too Many Requests"),
+            Map.entry(500, "Internal Server Error"),
+            Map.entry(501, "Not Implemented"),
+            Map.entry(502, "Bad Gateway"),
+            Map.entry(503, "Service Unavailable"),
+            Map.entry(504, "Gateway Timeout"));
+
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
             DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
 
@@ -172,9 +206,10 @@ abstract class AbstractDregsClient {
 
     // -- requests -----------------------------------------------------------------------------
 
-    final HttpRequest buildRequest(String method, String path, Map<String, Object> body) {
+    final HttpRequest buildRequest(
+            String method, String path, Map<String, Object> query, Map<String, Object> body) {
         HttpRequest.Builder request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/" + stripLeadingSlash(path)))
+                .uri(URI.create(baseUrl + "/" + stripLeadingSlash(path) + queryString(query)))
                 .timeout(timeout)
                 .header("Authorization", "Bearer " + secretKey)
                 .header("Accept", "application/json")
@@ -194,6 +229,33 @@ abstract class AbstractDregsClient {
 
     private static String stripLeadingSlash(String path) {
         return path.startsWith("/") ? path.substring(1) : path;
+    }
+
+    /**
+     * Builds a query string, leaving out every parameter that is unset.
+     *
+     * <p>A filter the caller did not ask for is not sent at all, rather than sent empty, because the
+     * API reads an empty filter as one that matches nothing.
+     */
+    static String queryString(Map<String, Object> query) {
+        if (query == null || query.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder built = new StringBuilder();
+
+        for (Map.Entry<String, Object> entry : query.entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
+
+            built.append(built.length() == 0 ? '?' : '&')
+                    .append(encodeSegment(entry.getKey()))
+                    .append('=')
+                    .append(encodeSegment(String.valueOf(entry.getValue())));
+        }
+
+        return built.toString();
     }
 
     /**
@@ -318,7 +380,9 @@ abstract class AbstractDregsClient {
 
     private static DregsApiException apiError(HttpResponse<String> response, Object payload) {
         int status = response.statusCode();
-        String message = status < 400 ? redirectMessage(response) : messageFrom(payload);
+        String message = status < 400
+                ? redirectMessage(response)
+                : messageFrom(payload, status, response.body());
         String requestId = headerOrNull(response, "X-Request-Id");
 
         return switch (status) {
@@ -344,7 +408,14 @@ abstract class AbstractDregsClient {
                 + "to another host. Point the base URL at the final address instead.";
     }
 
-    private static String messageFrom(Object payload) {
+    /**
+     * The message for an error response.
+     *
+     * <p>The body's own message wins. Without one, the status's standard reason phrase is far more
+     * use than a generic "failed", and only for a status without one does the start of a non-JSON
+     * body (a proxy's error page, usually) stand in.
+     */
+    static String messageFrom(Object payload, int status, String rawBody) {
         if (payload instanceof Map<?, ?> body) {
             for (String key : new String[] {"message", "error", "status"}) {
                 Object value = body.get(key);
@@ -353,6 +424,20 @@ abstract class AbstractDregsClient {
                     return text;
                 }
             }
+        }
+
+        String reason = REASON_PHRASES.get(status);
+
+        if (reason != null) {
+            return reason;
+        }
+
+        if (payload == null && rawBody != null && !rawBody.isBlank()) {
+            String text = rawBody.strip().replaceAll("\\s+", " ");
+
+            return text.length() > MAX_BODY_IN_MESSAGE
+                    ? text.substring(0, MAX_BODY_IN_MESSAGE) + "..."
+                    : text;
         }
 
         return "Request failed";
